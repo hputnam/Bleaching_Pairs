@@ -245,7 +245,7 @@ sbatch /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/align.
 ```
 
 ### Alignment Info
-slurm #
+slurm-88028.out
 
 Sample.ID|0 times | 1 times | >1 times | overall
 ---|---|---|---|---|
@@ -269,33 +269,33 @@ ELS25|23.43|62.08 |14.49 |76.57 |
 ELS26|20.50|65.45 |14.05 |79.50 |
 ELS27|22.82|63.58 |13.60 |77.18 |
 ELS28|27.15|60.19 |12.66 |72.85 |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
-ELS#|| | | |
+ELS29|26.27|58.99 |14.74 |73.73 |
+ELS2|25.18|58.89 |15.93 |74.82 |
+ELS30|26.39|59.06 |14.56 |73.61 |
+ELS31|25.48|61.62 |12.89 |74.52 |
+ELS32|20.99|64.90 |14.12 |79.01 |
+ELS33|25.35|60.19 |14.46 |74.65 |
+ELS34|21.42|64.27 |14.31 |78.58 |
+ELS35|22.81|62.53 |14.66 |77.19 |
+ELS36|23.56|60.98 |15.47 |76.44 |
+ELS37|19.26|65.56 |15.18 |80.74 |
+ELS38|24.95|61.27 |13.78 |75.05 |
+ELS39|33.53|54.33 |12.14 |66.47 |
+ELS3|32.69|54.26 |13.05 |67.31 |
+ELS40|21.99|62.46 |15.55 |78.01 |
+ELS4|24.36|61.22 |14.41 |75.64 |
+ELS5|32.33|54.80 |12.87 |67.67 |
+ELS6|31.54|54.29 |14.27 |68.55 |
+ELS7|23.68|62.39 |13.93 |76.32 |
+ELS8|26.03|60.28 |13.69 |73.87 |
+ELS9|22.95|62.93 |14.11 |77.05 |
 
 
 
 # Quantify expression
 
 ```
-nano
+nano /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/quant_stringtie.sh
 ```
 
 ```
@@ -303,35 +303,72 @@ nano
 #SBATCH -t 24:00:00
 #SBATCH --nodes=1 --ntasks-per-node=1
 #SBATCH --export=NONE
-#SBATCH --mem=200GB
+#SBATCH --mem=250GB
 #SBATCH --account=putnamlab
-#SBATCH -p putnamlab
 #SBATCH -D /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/Clean_Data/
 
-#load packages module load StringTie/2.1.4-GCC-9.3.0
+#load packages 
+module load StringTie/2.1.4-GCC-9.3.0
 
-#Transcript assembly: StringTie
+# loop through files to quantify
+sh -c 'for i in "ELS1" "ELS2" "ELS3" "ELS4" "ELS5" "ELS6" "ELS7" "ELS8" "ELS9" "ELS10" "ELS11" "ELS12" "ELS13" "ELS14" "ELS15" "ELS16" "ELS17" "ELS18" "ELS19" "ELS20" "ELS21" "ELS22" "ELS23" "ELS24" "ELS25" "ELS26" "ELS27" "ELS28" "ELS29" "ELS30" "ELS31" "ELS32" "ELS33" "ELS34" "ELS35" "ELS36" "ELS37" "ELS38" "ELS39" "ELS40"
+do
+stringtie ${i}.bam -p 8 -e -G ../refs/Mcap.GFFannotation.fixed.gff -o ${i}.gtf 
+echo "${i} gtf complete!"
+done'
 
-array=($(ls *.bam)) #Make an array of sequences to assemble
-
-for i in ${array[@]}; do 
-#Running with the -e option to compare output to exclude novel genes. 
-#Also output a file with the gene abundances 
-	sample_name=echo $i| awk -F [_] '{print $1"_"$2"_"$3}' 
-	stringtie -p 8 -e -B -G ../refs/Mcap.GFFannotation.fixed.gff -A ${sample_name}.gene_abund.tab -o ${sample_name}.gtf ${i} 
-	echo "StringTie assembly for seq file ${i}" $(date) 
-done 
-	echo "StringTie assembly COMPLETE, starting assembly analysis" $(date)
+echo "gtf generation complete!"
 ```
 
 ```
-sbatch
+sbatch /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/quant_stringtie.sh
 ```
 
+# Assess the performance of the assembly
+
+*Gffcompare is a tool that can compare, merge, annotate and estimate accuracy of GFF/GTF files when compared with a reference annotation*
+
+Using the StringTie merge mode, merge the assembly-generated GTF files to assess how well the predicted transcripts track to the reference annotation file. This step requires the TXT file,  (mergelist.txt). This file lists all of the file names to be merged. *Make sure ```gtf_mergelist.txt``` is in the StringTie program directory*.
+
+++StringTie Arguments Used++:  
+- --merge - Distinct from the assembly usage mode used above, in the merge mode, StringTie takes as input a list of GTF/GFF files and merges/assembles these transcripts into a non-redundant set of transcripts.
+- -p - Specify number of processers
+- -G - Specify reference annotation file. With this option, StringTie assembles the transfrags from the input GTF files with the reference sequences
+- -o - Name of output file
+- <mergelist.txt> - File listing all filenames to be merged. Include full path.
+
+```
+nano /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/merge_stringtie.sh
+```
+
+```
+#!/bin/bash
+#SBATCH -t 24:00:00
+#SBATCH --nodes=1 --ntasks-per-node=1
+#SBATCH --export=NONE
+#SBATCH --mem=250GB
+#SBATCH --account=putnamlab
+#SBATCH -D /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/Clean_Data/
+
+#load packages 
+module load StringTie/2.1.4-GCC-9.3.0
+module load GffCompare/0.12.1-GCCcore-8.3.0
+
+#make gtf_list.txt file 
+ls *.gtf > gtf_mergelist.txt
+
+stringtie --merge -p 8 -G ../refs/Mcap.GFFannotation.fixed.gff -o Mcap_stringtie_merged.gtf gtf_mergelist.txt
+
+gffcompare -r ../refs/Mcap.GFFannotation.fixed.gff -o Mcap_gffCompared Mcap_stringtie_merged.gtf
+```
+
+```
+sbatch /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/merge_stringtie.sh
+```
 
 # Generate counts matrix
 ```
-nano
+nano /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/prepDE.sh
 ```
 
 ```
@@ -339,28 +376,21 @@ nano
 #SBATCH -t 24:00:00
 #SBATCH --nodes=1 --ntasks-per-node=1
 #SBATCH --export=NONE
-#SBATCH --mem=200GB
+#SBATCH --mem=100GB
 #SBATCH --account=putnamlab
-#SBATCH -p putnamlab
 #SBATCH -D /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/Clean_Data/
 
 #load packages 
 module load Python/2.7.15-foss-2018b #Python 
-module load StringTie/2.1.4-GCC-9.3.0
-module load GffCompare/0.12.1-GCCcore-8.3.0
-
-#make gtf_list.txt file ls *.gtf > gtf_list.txt
-
-stringtie --merge -p 8 -G ../refs/Mcap.GFFannotation.fixed.gff -o Mcapitata_merged.gtf gtf_list.txt 
-#Merge GTFs to form $ echo "Stringtie merge complete" $(date)
-
-gffcompare -r ../refs/Mcap.GFFannotation.fixed.gff -G -o merged Mcapitata_merged.gtf #Compute the accuracy and pre$ echo "GFFcompare complete, Starting gene count matrix assembly..." $(date)
 
 #make gtf list text file 
-for filename in ELS*.gtf; do echo $filename $PWD/$filename; done > listGTF.txt
+for filename in ELS*.gtf; do echo $filename $PWD/$filename; done > list_path_GTF.txt
 
-python ../scripts/prepDE.py -g Mcap_Pairs_gene_count_matrix.csv -i listGTF.txt #Compile the gene count matrix echo "Gene count matrix compiled." $(date)
+#Compile the gene count matrix 
+python ../scripts/prepDE.py -g Mcap_Pairs_gene_count_matrix.csv -i list_path_GTF.txt
+
+echo "Gene count matrix compiled." $(date)
 ```
 ```
-sbatch
+sbatch /data/putnamlab/KITT/hputnam/20210921_BleachedPairs_TagSeq/scripts/prepDE.sh
 ```
