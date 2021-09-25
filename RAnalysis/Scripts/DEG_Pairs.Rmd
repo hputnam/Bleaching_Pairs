@@ -1,0 +1,172 @@
+---
+title: "Bleaching_Pairs_DiffEXpress_Analysis"
+author: "HM Putnam"
+date: "9/24/2021"
+output: html_document
+---
+
+# Load Libraries
+```{r libraries}
+library("tidyverse")
+library("DESeq2")
+library("pheatmap")
+library("RColorBrewer")
+library("genefilter")
+library("GSEABase")
+library("goseq")
+```
+
+```{r}
+counts <- read.csv(file="RAnalysis/Data/Mcap_Pairs_gene_count_matrix.csv", header=T, sep=",", row.names=1) #Load expression matrix 
+head(counts)
+colnames(counts)
+filt <- filterfun(pOverA(0.25,5)) #set filter values for PoverA, P percent of the samples have counts over A
+tfil <- genefilter(counts, filt) #create filter for the counts data
+keep <- counts[tfil,] #identify transcripts to keep by count filter
+gn.keep <- rownames(keep) #identify transcript list
+counts.5x <- as.matrix(counts[which(rownames(counts) %in% gn.keep),]) #data filtered in PoverA, P percent of the samples have counts over A
+#write.csv(counts.5x, file="Output/filtered_counts.csv")
+
+storage.mode(counts.5x) = "integer" #store counts data as integer
+sample.info <- read.csv(file="RAnalysis/Data/sample_info.csv", header=T, sep=",") #load sample info
+rownames(sample.info) <- sample.info$Sample.Description
+colnames(counts.5x) <- rownames(sample.info) 
+
+Mcap.annot.Blast <- read.csv(file="RAnalysis/Data/200824_Mcap_Blast_GO_KO.tsv", header=TRUE, sep="\t", na.strings="") #Load expression matrix f
+Mcap.annot.KEGG <- read.csv(file="RAnalysis/Data/Mcap_KO_annot.tsv", header=TRUE, sep="\t", na.strings="") #Load expression matrix f
+Mcap.annot.KEGG <- Mcap.annot.KEGG[-1,-1]
+Mcap.annot.Blast <- Mcap.annot.Blast %>% distinct(gene, .keep_all = TRUE)
+Mcap.annot.KEGG  <- Mcap.annot.KEGG  %>% distinct(gene, .keep_all = TRUE)
+Mcap.annot.KEGG$gene <- gsub("augustus.", "", Mcap.annot.KEGG$gene)
+Mcap.annot.KEGG$gene <- gsub(".t1", "", Mcap.annot.KEGG$gene)
+Mcap.annot <- full_join(Mcap.annot.KEGG, Mcap.annot.Blast, by="gene")
+Mcap.annot$gene <- Mcap.annot$gene %>% replace_na("unknown")
+#Mcap.annot$ann.row <- paste0(Mcap.annot$gene," ", Mcap.annot$Prot.ID)
+
+#calculate gene lengths from gff
+gene.len.df <- read.csv(file="RAnalysis/Data/Mcap.GFFannotation.fixed.gff", header=FALSE, sep="\t")
+gene.len.df <- gene.len.df %>%
+  filter(V3 == "gene" )
+gene.len.df$length <- gene.len.df$V5-gene.len.df$V4
+gene.len.df$gene <- gene.len.df$V9
+gene.len.df <- gene.len.df[,c(11,10)]
+
+```
+
+```{r}
+#http://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#the-deseqdataset
+#it is also possible to retrieve the log2 fold changes, p values and adjusted p values of variables other than the last one in the design. While in this case, type is not biologically interesting as it indicates differences across sequencing protocol, for other hypothetical designs, such as ~genotype + condition + genotype:condition, we may actually be interested in the difference in baseline expression across genotype, which is not the last variable in the design.
+#In any case, the contrast argument of the function results takes a character vector of length three: the name of the variable, the name of the factor level for the numerator of the log2 ratio, and the name of the factor level for the denominator. The contrast argument can also take other forms, as described in the help page for results and below
+gdds <- DESeqDataSetFromMatrix(countData = counts.5x, colData = sample.info, design = ~ Phenotype + Time + Phenotype:Time) #create a DESeqDataSet object
+
+
+```
+
+
+```{r}
+
+SF.gdds_dev <- estimateSizeFactors(gdds) #estimate size factors to determine if we can use vst  to transform our data. Size factors should be less than for to use vst
+print(sizeFactors(SF.gdds_dev)) #View size factors #If size factors are all less than 4, we can use VST
+
+gvst_dev <- vst(gdds, blind=FALSE) #apply a variance stabilizing transforamtion to minimize effects of small counts and normalize wrt library size
+head(assay(gvst_dev), 3) #view transformed gene count data
+
+sampleDists <- dist(t(assay(gvst_dev))) #calculate distance matix
+sampleDistMatrix <- as.matrix(sampleDists) #distance matrix
+rownames(sampleDistMatrix) <- colnames(gvst_dev) #assign row names
+colnames(sampleDistMatrix) <- NULL #assign col names
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255) #assign colors
+pheatmap(sampleDistMatrix, #plot matrix of expression similarity
+         clustering_distance_rows=sampleDists, #cluster rows
+         clustering_distance_cols=sampleDists, #cluster columns
+         col=colors) #set colors
+
+plotPCA(gvst_dev, intgroup = c("Phenotype", "Time")) #plot PCA of samples with all data
+
+
+##### Plot a heatmap of sample-to-sample distances
+
+gsampleDists_dev <- dist(t(assay(gvst_dev))) #calculate distance matix
+gsampleDistMatrix_dev <- as.matrix(gsampleDists_dev) #distance matrix
+rownames(gsampleDistMatrix_dev) <- colnames(gvst_dev) #assign row names
+colnames(gsampleDistMatrix_dev) <- NULL #assign col names
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255) #assign colors
+pheatmap(gsampleDistMatrix_dev, #plot matrix
+         clustering_distance_rows=gsampleDists_dev, #cluster rows
+         clustering_distance_cols=gsampleDists_dev, #cluster columns
+         col=colors) #set colors
+```
+
+#Run differential expression test using a Wald model. 
+```{r, message = FALSE}
+DEGSeq2_wald <- DESeq(gdds) #run differential expression test by group using the Wald model
+```
+
+```{r}
+DEGSeq2.results.Pheno <- results(DEGSeq2_wald, contrast=c("Phenotype","Bleach","NotBleached")) # 
+head(DEGSeq2.results.Pheno)
+sum(DEGSeq2.results.Pheno$padj < 0.05, na.rm=TRUE) #How many adjusted p-values were less than 0.05?
+DEGSeq2.sig.results.Pheno <- subset(DEGSeq2.results.Pheno, padj < 0.05)
+DEGSeq2.sig.results.Pheno <- as.data.frame(DEGSeq2.sig.results.Pheno)
+
+DEGSeq2.results.Time <- results(DEGSeq2_wald, contrast=c("Time","December","July")) # 
+head(DEGSeq2.results.Time)
+sum(DEGSeq2.results.Time$padj < 0.05, na.rm=TRUE) #How many adjusted p-values were less than 0.05?
+DEGSeq2.sig.results.Time <- subset(DEGSeq2.results.Time , padj < 0.05)
+DEGSeq2.sig.results.Time <- as.data.frame(DEGSeq2.sig.results.Time)
+DEGSeq2.sig.results.Time$gene <- rownames(DEGSeq2.sig.results.Time)
+
+Time_DEGS_Annot <- left_join(DEGSeq2.sig.results.Time, Mcap.annot.Blast, by="gene")
+
+```
+
+
+
+## Visualize differentially expressed genes from DESeq2
+```{r}
+# Subset list of genes by those which padj>0.5
+
+TimeDEGs <- rownames(DEGSeq2.sig.results.Time) # list all gene names 
+Time_list <- gdds[which(rownames(gdds) %in% TimeDEGs)] # filter gdds DESeq2 object by unique gene names
+
+# As determined above, size factors all less than 4, so proceed with VST
+# apply a variance stabilizing transformation to minimize effects of small counts and normalize library size
+
+DEGvstTime <- vst(Time_list, blind = FALSE, nsub = nrow(counts(Time_list)))
+
+# Plot heat map with diff expressed genes
+# Make a matrix for computing similarity
+mat <- assay(DEGvstTime)#[DEG.results.all, ] # make an expression object
+mat <- mat - rowMeans(mat) #difference in expression compared to average across all samples
+dim(mat)
+ann_colors <- list(Time= c(December="blue", July="red"))
+df_DEGSeq2 <- as.data.frame(colData(DEGvstTime)[c("Time")]) #make dataframe for column naming and associated treatment
+DEGSeq2_heatmap <- pheatmap(mat, scale= "row", legend=TRUE, annotation_legend=TRUE, annotation_col=df_DEGSeq2, annotation_colors = ann_colors,
+                            clustering_distance_rows="euclidean", clustering_method = "average",
+                            show_rownames =FALSE,
+                            show_colnames =TRUE,
+                            cluster_cols = TRUE)
+
+pdf(file = "RAnalysis/Output/DEGTime_heatmap.pdf")
+DEGSeq2_heatmap
+dev.off()
+
+
+# PCA plot of diff-expressed genes 
+DEGSeq2_PCAdata <- plotPCA(DEGvstTime, intgroup = c("Time"), returnData=TRUE)
+percentVar_pca <- round(100*attr(DEGSeq2_PCAdata, "percentVar")) #plot PCA of samples with all data
+DEGSeq2_PCA_plot <- ggplot(DEGSeq2_PCAdata, aes(PC1, PC2, color=Time)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar_pca[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar_pca[2],"% variance")) +
+  scale_color_manual(values = c(December="blue", July="red")) +
+  coord_fixed() +
+  theme_bw() + #Set background color
+  theme(panel.border = element_blank(), # Set border
+        #panel.grid.major = element_blank(), #Set major gridlines
+        #panel.grid.minor = element_blank(), #Set minor gridlines
+        axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank()) #Set the plot background
+
+DEGSeq2_PCA_plot
+```
