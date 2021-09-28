@@ -20,6 +20,15 @@ library("goseq")
 counts <- read.csv(file="RAnalysis/Data/Mcap_Pairs_gene_count_matrix.csv", header=T, sep=",", row.names=1) #Load expression matrix 
 head(counts)
 colnames(counts)
+colSums(counts)
+counts.check <- as.data.frame(counts)
+counts.check$totals <- rowSums(counts.check)
+counts.check$gene <- row.names(counts.check)
+counts.check <- counts.check %>% arrange(totals)
+counts.check.n0 <- counts.check %>% filter(totals >100)
+counts.check.n0 <- counts.check.n0 %>% arrange(-totals)
+
+
 filt <- filterfun(pOverA(0.25,5)) #set filter values for PoverA, P percent of the samples have counts over A
 tfil <- genefilter(counts, filt) #create filter for the counts data
 keep <- counts[tfil,] #identify transcripts to keep by count filter
@@ -117,6 +126,7 @@ DEGSeq2.sig.results.Time <- as.data.frame(DEGSeq2.sig.results.Time)
 DEGSeq2.sig.results.Time$gene <- rownames(DEGSeq2.sig.results.Time)
 
 Time_DEGS_Annot <- left_join(DEGSeq2.sig.results.Time, Mcap.annot.Blast, by="gene")
+Time_DEGS_Annot <- Time_DEGS_Annot %>% arrange(, total)
 
 ```
 
