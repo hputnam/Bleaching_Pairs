@@ -24,7 +24,7 @@ colSums(counts)
 counts.check <- as.data.frame(counts)
 counts.check$totals <- rowSums(counts.check)
 counts.check$gene <- row.names(counts.check)
-counts.check <- counts.check %>% arrange(totals)
+counts.check <- counts.check %>% arrange(-totals)
 counts.check.n0 <- counts.check %>% filter(totals >100)
 counts.check.n0 <- counts.check.n0 %>% arrange(-totals)
 
